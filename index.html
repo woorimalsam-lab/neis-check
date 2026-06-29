@@ -3671,8 +3671,21 @@
       const categoryText = activeCategoryItem.querySelector("span").textContent;
       const config = LIMITS[categoryKey];
 
+      // 자율활동은 바이트 계산기 템플릿(.xlsm)으로 다운로드
+      // → 2026_나이스_바이트_계산기(자율)_N학년_M반.xlsm
+      if (categoryKey === "jaju" && typeof TEMPLATE_JAJU_B64 !== "undefined") {
+        const eg = document.getElementById("excel-grade-select");
+        const eb = document.getElementById("excel-ban-select");
+        const ec = document.getElementById("excel-category-select");
+        if (eg) eg.value = g;
+        if (eb) eb.value = b;
+        if (ec) ec.value = "jaju";
+        downloadExcelTemplate();
+        return;
+      }
+
       const wb = generateWorkbookData(categoryKey, g, b);
-      
+
       XLSX.writeFile(wb, `생기부_입력양식_${categoryText}_${g}학년_${b}반(최대_${config.maxChar}자).xlsx`);
     }
 
