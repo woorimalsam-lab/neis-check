@@ -3671,15 +3671,23 @@
       const categoryText = activeCategoryItem.querySelector("span").textContent;
       const config = LIMITS[categoryKey];
 
-      // 자율활동은 바이트 계산기 템플릿(.xlsm)으로 다운로드
-      // → 2026_나이스_바이트_계산기(자율)_N학년_M반.xlsm
-      if (categoryKey === "jaju" && typeof TEMPLATE_JAJU_B64 !== "undefined") {
+      // 바이트 계산기 템플릿이 있는 항목은 해당 .xlsm 템플릿으로 다운로드
+      // → 2026_나이스_바이트_계산기(항목)_N학년_M반.xlsm
+      // (봉사활동실적·개인세특은 전용 템플릿이 없어 기존 xlsx 양식으로 다운로드)
+      const TEMPLATE_CATEGORIES = {
+        jaju: typeof TEMPLATE_JAJU_B64 !== "undefined",
+        donga: typeof TEMPLATE_DONGA_B64 !== "undefined",
+        jinro: typeof TEMPLATE_JINRO_B64 !== "undefined",
+        subject: typeof TEMPLATE_SUBJECT_B64 !== "undefined",
+        comprehensive: typeof TEMPLATE_COMPREHENSIVE_B64 !== "undefined"
+      };
+      if (TEMPLATE_CATEGORIES[categoryKey]) {
         const eg = document.getElementById("excel-grade-select");
         const eb = document.getElementById("excel-ban-select");
         const ec = document.getElementById("excel-category-select");
         if (eg) eg.value = g;
         if (eb) eb.value = b;
-        if (ec) ec.value = "jaju";
+        if (ec) ec.value = categoryKey;
         downloadExcelTemplate();
         return;
       }
