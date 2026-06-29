@@ -1261,7 +1261,11 @@
             <option value="">학생 선택</option>
           </select>
         </div>
-        <div class="info-input-group" style="margin-left: auto;">
+        <div class="info-input-group" style="margin-left: auto; gap: 8px;">
+          <button id="roster-upload-btn" class="lib-btn" title="학생 명단 파일(student_rosters.json / subject_rosters.js 또는 .json)을 선택하세요. 여러 개를 한 번에 선택할 수 있습니다." style="background-color: #6366f1; height: 38px; padding: 0 16px; font-weight: 600; display: flex; align-items: center; gap: 6px; font-size: 13px; border: none; border-radius: 8px; cursor: pointer; color: white;">
+            📤 명단 불러오기
+          </button>
+          <input type="file" id="roster-upload-input" accept=".json,.js,application/json,text/javascript" multiple style="display: none;">
           <button id="class-excel-download-btn" class="lib-btn" style="background-color: #10b981; height: 38px; padding: 0 16px; font-weight: 600; display: flex; align-items: center; gap: 6px; font-size: 13px; border: none; border-radius: 8px; cursor: pointer; color: white;">
             📥 학급 엑셀 다운로드
           </button>
@@ -2257,7 +2261,101 @@
     let excelData = []; // In-memory spreadsheet storage for uploaded file
     let selectedRowIdx = null; // Currently editing student index inside Modal
 
+    /* ── 학생 명단 업로드/복원 ──────────────────────────────────────────────
+       개인정보 보호를 위해 명단은 코드에 포함하지 않습니다.
+       사용자가 업로드한 명단은 이 브라우저(localStorage)에만 저장됩니다. */
+    const ROSTER_STUDENTS_KEY = "roster_students_data";
+    const ROSTER_SUBJECTS_KEY = "roster_subjects_data";
+
+    function restoreRostersFromStorage() {
+      try {
+        const sd = localStorage.getItem(ROSTER_STUDENTS_KEY);
+        if (sd) Object.assign(STUDENT_ROSTERS, JSON.parse(sd));
+      } catch (e) { console.warn("학생 명단 복원 실패:", e); }
+      try {
+        const subd = localStorage.getItem(ROSTER_SUBJECTS_KEY);
+        if (subd && typeof SUBJECT_ROSTERS !== "undefined") Object.assign(SUBJECT_ROSTERS, JSON.parse(subd));
+      } catch (e) { console.warn("교과 명단 복원 실패:", e); }
+    }
+
+    // 업로드한 텍스트(.json 또는 const ... = {...}; 형태의 .js)에서 객체를 추출
+    function parseRosterText(text) {
+      let t = text.replace(/^﻿/, "").trim();
+      const start = t.indexOf("{");
+      const end = t.lastIndexOf("}");
+      if (start === -1 || end === -1 || end < start) {
+        throw new Error("객체를 찾을 수 없습니다.");
+      }
+      return JSON.parse(t.slice(start, end + 1));
+    }
+
+    // 객체 모양으로 학생 명단인지 교과 명단인지 자동 판별
+    function detectRosterKind(obj) {
+      const vals = Object.values(obj);
+      if (vals.some(v => v && typeof v === "object" && !Array.isArray(v))) return "subjects";
+      if (vals.some(v => Array.isArray(v))) return "students";
+      return null;
+    }
+
+    function initRosterUpload() {
+      const btn = document.getElementById("roster-upload-btn");
+      const input = document.getElementById("roster-upload-input");
+      if (!btn || !input) return;
+
+      btn.addEventListener("click", () => input.click());
+
+      input.addEventListener("change", () => {
+        const files = Array.from(input.files || []);
+        if (!files.length) return;
+
+        const summary = { students: 0, subjects: 0, errors: [] };
+        let pending = files.length;
+
+        files.forEach(file => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const obj = parseRosterText(String(reader.result));
+              const kind = detectRosterKind(obj);
+              if (kind === "students") {
+                localStorage.setItem(ROSTER_STUDENTS_KEY, JSON.stringify(obj));
+                summary.students += Object.values(obj).reduce((n, a) => n + (Array.isArray(a) ? a.length : 0), 0);
+              } else if (kind === "subjects") {
+                localStorage.setItem(ROSTER_SUBJECTS_KEY, JSON.stringify(obj));
+                summary.subjects += Object.values(obj).reduce((n, m) => n + Object.keys(m || {}).length, 0);
+              } else {
+                summary.errors.push(`${file.name}: 명단 형식을 인식할 수 없습니다.`);
+              }
+            } catch (e) {
+              summary.errors.push(`${file.name}: ${e.message}`);
+            }
+            if (--pending === 0) finishRosterUpload(summary);
+          };
+          reader.onerror = () => {
+            summary.errors.push(`${file.name}: 파일을 읽지 못했습니다.`);
+            if (--pending === 0) finishRosterUpload(summary);
+          };
+          reader.readAsText(file, "utf-8");
+        });
+        input.value = ""; // 같은 파일 다시 선택 가능하도록 초기화
+      });
+    }
+
+    function finishRosterUpload(summary) {
+      const msgs = [];
+      if (summary.students) msgs.push(`학생 ${summary.students}명`);
+      if (summary.subjects) msgs.push(`교과 명단 ${summary.subjects}개`);
+      if (msgs.length) {
+        alert(`명단을 불러왔습니다: ${msgs.join(", ")}\n변경 사항을 적용하기 위해 화면을 새로고침합니다.`);
+        location.reload();
+      } else {
+        alert("명단을 불러오지 못했습니다.\n" + (summary.errors.join("\n") || "지원하는 형식인지 확인하세요."));
+      }
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
+      restoreRostersFromStorage();
+      initRosterUpload();
       initTabs();
       initCategorySelector();
       initEditor();
