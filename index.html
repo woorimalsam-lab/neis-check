@@ -997,6 +997,7 @@
     /* 점검 대상(금지어/대체어) 하이라이트 */
     mark.hl-banned { background-color: rgba(239, 68, 68, 0.32); color: #fecaca; border-radius: 3px; padding: 0 2px; font-weight: 700; }
     mark.hl-replace { background-color: rgba(251, 191, 36, 0.30); color: #fde68a; border-radius: 3px; padding: 0 2px; font-weight: 700; }
+    mark.hl-ending { background-color: rgba(96, 165, 250, 0.30); color: #bfdbfe; border-radius: 3px; padding: 0 2px; font-weight: 700; text-decoration: underline dotted; }
     .inspect-content { color: var(--text-main); font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border-left: 3px solid var(--border-color); }
     tr.content-row td { padding-top: 0 !important; }
     .modal-highlight { background: #0b0f19; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; max-height: 150px; overflow: auto; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; color: var(--text-main); }
@@ -1726,7 +1727,7 @@
       </div>
       <div style="display: flex; flex-direction: column; gap: 16px;">
         <div>
-          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 700;">🔍 점검 미리보기 — <span style="color:#f87171;">금지어(삭제)</span> · <span style="color:#fbbf24;">대체 권장</span> 표시</div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 700;">🔍 점검 대상 미리보기 — <span style="color:#f87171;">금지어(삭제)</span> · <span style="color:#fbbf24;">대체 권장</span> · <span style="color:#93c5fd;">명사형 종결</span></div>
           <div id="modal-highlight" class="modal-highlight"></div>
         </div>
         <textarea id="modal-textarea" class="main-editor" style="height: 200px; font-size: 14px;"></textarea>
@@ -2541,18 +2542,27 @@
           if (m[0].length === 0) { regex.lastIndex++; continue; }
           if (!isValidBannedMatch(banned, text, m.index, m[0])) continue;
           const cleanAlt = BANNED_WORDS[banned].split("|")[0];
-          ranges.push({ start: m.index, end: m.index + m[0].length, critical: isCriticalBanned(m[0], cleanAlt) });
+          ranges.push({ start: m.index, end: m.index + m[0].length, cls: isCriticalBanned(m[0], cleanAlt) ? "hl-banned" : "hl-replace" });
         }
       });
-      // 겹치는 구간 제거(시작 빠른 것, 동률이면 긴 것 우선)
-      ranges.sort((a, b) => a.start - b.start || b.end - a.end);
+      // 명사형 어미로 끝맺지 않은 마지막 서술어도 점검 대상으로 색상 표시
+      if (isNonNounEnding(text)) {
+        const info = lastSentenceInfo(text);
+        if (info && info.lastWord) {
+          const at = text.lastIndexOf(info.lastWord);
+          if (at !== -1) ranges.push({ start: at, end: at + info.lastWord.length, cls: "hl-ending" });
+        }
+      }
+      // 겹치는 구간 제거(시작 빠른 것, 동률이면 긴 것/금지어 우선)
+      const prio = { "hl-banned": 0, "hl-replace": 1, "hl-ending": 2 };
+      ranges.sort((a, b) => a.start - b.start || b.end - a.end || prio[a.cls] - prio[b.cls]);
       const merged = [];
       let lastEnd = -1;
       for (const r of ranges) { if (r.start >= lastEnd) { merged.push(r); lastEnd = r.end; } }
       let html = "", pos = 0;
       for (const r of merged) {
         html += escapeHtmlText(text.slice(pos, r.start));
-        html += `<mark class="${r.critical ? "hl-banned" : "hl-replace"}">${escapeHtmlText(text.slice(r.start, r.end))}</mark>`;
+        html += `<mark class="${r.cls}">${escapeHtmlText(text.slice(r.start, r.end))}</mark>`;
         pos = r.end;
       }
       html += escapeHtmlText(text.slice(pos));
