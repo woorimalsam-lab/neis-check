@@ -2421,6 +2421,115 @@
         ["대회", "수상", "특허", "논문", "어학연수", "부모", "기재 불가"].some(k => word.includes(k) || cleanAlt.includes(k));
     }
 
+    // 가족/부모 지표 — 전문직 단어가 '부모 직업 암시'인지 판단할 때 사용
+    const FAMILY_INDICATORS = ["부모", "부친", "모친", "아버지", "어머니", "아버님", "어머님", "아빠", "엄마", "조부", "조모", "할아버지", "할머니", "외조부", "외조모", "삼촌", "외삼촌", "이모", "고모", "숙부", "숙모", "보호자", "가장", "집안", "가정형편", "가업"];
+    // 본인 진로 희망/학생 역할 등으로 흔히 쓰여 오탐이 잦은 전문직·지위어 → 가족 맥락이 있을 때만 점검
+    const PARENT_JOB_GATED = ["의사", "변호사", "임원"];
+
+    // 특정 금지어 매칭이 '실제 점검 대상'인지 판단(오탐 제외 규칙 포함)
+    function isValidBannedMatch(banned, text, idx, matchStr) {
+      // '사설' : 한글에 둘러싸이면(사설학원 등) 제외
+      if (banned === "사설") {
+        const before = idx > 0 ? text[idx - 1] : " ";
+        const after = (idx + matchStr.length) < text.length ? text[idx + matchStr.length] : " ";
+        if (/[가-힣]/.test(before) || /[가-힣]/.test(after)) return false;
+      }
+      // '의사' : 의사소통/의사결정/의사표현 등은 부모 직업과 무관 → 제외
+      if (banned === "의사") {
+        const tail = text.slice(idx + matchStr.length).replace(/^\s+/, "");
+        if (/^(소통|결정|표현|전달|표시)/.test(tail)) return false;
+      }
+      // '교수' : 교수학습/교수법/교수자 등 교수활동 용어는 제외
+      if (banned === "교수") {
+        const tail = text.slice(idx + matchStr.length).replace(/^\s+/, "");
+        if (/^(학습|법|방법|자|모형|설계|전략|매체|이론|활동|-)/.test(tail)) return false;
+      }
+      // 전문직·지위어 : 본문에 가족 지표가 있을 때만 '부모 직업 암시'로 점검
+      if (PARENT_JOB_GATED.includes(banned) && !FAMILY_INDICATORS.some(f => text.includes(f))) {
+        return false;
+      }
+      return true;
+    }
+
+    // 본문에 해당 금지어의 '유효한' 출현이 하나라도 있는지
+    function hasValidBanned(banned, text) {
+      let idx = text.indexOf(banned);
+      while (idx !== -1) {
+        if (isValidBannedMatch(banned, text, idx, banned)) return true;
+        idx = text.indexOf(banned, idx + 1);
+      }
+      return false;
+    }
+
+    // ── 명사형 어미 종결 점검 / 추천 ──────────────────────────────────────
+    function endsWithNounForm(word) {
+      if (!word) return true;
+      const code = word.charCodeAt(word.length - 1);
+      if (code >= 0xAC00 && code <= 0xD7A3 && (code - 0xAC00) % 28 === 16) return true; // 받침 'ㅁ' = 명사형(함/됨/음/임/줌/남 등)
+      return /기$/.test(word); // '~하기' 형태 허용
+    }
+
+    function lastSentenceInfo(text) {
+      const cleanText = text
+        .replace(/["“”'‘][^"“”'’]*["“”'’]/g, "")
+        .replace(/\([^)]*\)/g, "").replace(/<[^>]*>/g, "")
+        .replace(/\[[^\]]*\]/g, "").replace(/【[^】]*】/g, "");
+      const sentences = cleanText.split(/[.\n]/).map(s => s.trim()).filter(s => s.length > 0);
+      if (!sentences.length) return null;
+      const lastSentence = sentences[sentences.length - 1];
+      const m = lastSentence.match(/([가-힣]+)$/);
+      return { lastSentence, lastWord: m ? m[1] : "" };
+    }
+
+    function isNonNounEnding(text) {
+      if (!text || !text.trim()) return false;
+      const info = lastSentenceInfo(text);
+      if (!info || !info.lastWord) return false;
+      return !endsWithNounForm(info.lastWord);
+    }
+
+    // 끝 단어를 보고 알맞은 명사형 어미로 변환 (긴 패턴 우선)
+    const NOUN_ENDING_RULES = [
+      [/하였습니다$/, "함"], [/하였다$/, "함"], [/하였음$/, "함"],
+      [/했었다$/, "했음"], [/했습니다$/, "함"], [/했어요$/, "함"], [/했다$/, "함"], [/해요$/, "함"],
+      [/되었습니다$/, "됨"], [/되었어요$/, "됨"], [/되었다$/, "됨"], [/된다$/, "됨"], [/되다$/, "됨"], [/됐다$/, "됨"],
+      [/합니다$/, "함"], [/한다$/, "함"], [/하다$/, "함"],
+      [/입니다$/, "임"], [/이었다$/, "이었음"], [/이다$/, "임"], [/예요$/, "임"], [/에요$/, "임"],
+      [/있습니다$/, "있음"], [/있다$/, "있음"], [/없습니다$/, "없음"], [/없다$/, "없음"],
+      [/주었다$/, "줌"], [/줬다$/, "줬음"], [/준다$/, "줌"],
+      [/졌다$/, "짐"], [/진다$/, "짐"],
+      [/왔다$/, "왔음"], [/온다$/, "옴"],
+      [/뛰어나다$/, "뛰어남"], [/났다$/, "났음"], [/난다$/, "남"], [/나다$/, "남"],
+      [/였다$/, "였음"], [/었다$/, "었음"], [/았다$/, "았음"], [/는다$/, "음"],
+      [/어요$/, "음"], [/아요$/, "음"],
+      [/싶다$/, "싶음"], [/같다$/, "같음"],
+      [/좋다$/, "좋음"], [/높다$/, "높음"], [/많다$/, "많음"], [/크다$/, "큼"], [/넓다$/, "넓음"], [/깊다$/, "깊음"], [/빠르다$/, "빠름"]
+    ];
+    function toNounForm(word) {
+      for (const [re, rep] of NOUN_ENDING_RULES) {
+        if (re.test(word)) return word.replace(re, rep);
+      }
+      // 일반 과거형(…ㅆ다, 예: 키웠다·받았다·이뤘다) → …음
+      if (word.length >= 2 && word.endsWith("다")) {
+        const prev = word.charCodeAt(word.length - 2);
+        if (prev >= 0xAC00 && prev <= 0xD7A3 && (prev - 0xAC00) % 28 === 20) {
+          return word.slice(0, -1) + "음";
+        }
+      }
+      return null;
+    }
+
+    // 마지막 문장 끝 단어 → { word, nounWord, recommended }
+    function suggestNounEnding(text) {
+      const info = lastSentenceInfo(text);
+      if (!info || !info.lastWord) return null;
+      const nounWord = toNounForm(info.lastWord);
+      if (!nounWord || nounWord === info.lastWord) return null;
+      const escaped = info.lastWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const recommended = info.lastSentence.replace(new RegExp(escaped + "$"), nounWord) + ".";
+      return { word: info.lastWord, nounWord, recommended };
+    }
+
     // 본문에서 금지어/대체어 위치를 찾아 색상 하이라이트된 HTML을 만든다.
     function buildHighlightedHTML(text) {
       if (!text) return "";
@@ -2430,11 +2539,7 @@
         let m;
         while ((m = regex.exec(text)) !== null) {
           if (m[0].length === 0) { regex.lastIndex++; continue; }
-          if (banned === "사설") {
-            const before = m.index > 0 ? text[m.index - 1] : " ";
-            const after = m.index + m[0].length < text.length ? text[m.index + m[0].length] : " ";
-            if (/[가-힣]/.test(before) || /[가-힣]/.test(after)) continue;
-          }
+          if (!isValidBannedMatch(banned, text, m.index, m[0])) continue;
           const cleanAlt = BANNED_WORDS[banned].split("|")[0];
           ranges.push({ start: m.index, end: m.index + m[0].length, critical: isCriticalBanned(m[0], cleanAlt) });
         }
@@ -2470,27 +2575,20 @@
         });
       }
 
-      // 2. Ending verb check
-      if (text.trim().length > 0) {
-        let cleanText = text.replace(/["“”'‘][^"“”'’]*["“”'’]/g, '').replace(/\([^)]*\)/g, '').replace(/<[^>]*>/g, '').replace(/\[[^\]]*\]/g, '').replace(/【[^】]*】/g, '');
-        const sentences = cleanText.split(/[.\n]/).map(s => s.trim()).filter(s => s.length > 0);
-        let nonNounEndingCount = 0;
-        if (cleanText.trim().endsWith('.')) {
-          nonNounEndingCount = 0;
-        } else if (sentences.length > 0) {
-          const lastSentence = sentences[sentences.length - 1];
-          const lastChar = lastSentence.slice(-1);
-          if (/[다요오죠체서라]$/.test(lastSentence) || !/[함임음됨ㅁㄴ기]$/.test(lastChar)) {
-            nonNounEndingCount++;
-          }
+      // 2. 명사형 어미 종결 점검 + 추천
+      if (isNonNounEnding(text)) {
+        const sug = suggestNounEnding(text);
+        let msg = `맨 마지막 문장이 명사형 어미(~함, ~임, ~음)로 끝맺지 않은 것으로 보입니다.`;
+        const issue = { type: "warning", header: "문장 종결(명사형 어미) 검토 권장" };
+        if (sug) {
+          msg += `<br><strong style="color:#34d399;">추천: …${escapeHtmlText(sug.word)} → ${escapeHtmlText(sug.nounWord)}</strong>`;
+          msg += `<br><span style="font-size:12px; color:#94a3b8; display:block; margin-top:4px;">추천 문장: ${escapeHtmlText(sug.recommended)}</span>`;
+          issue.endingFix = { from: sug.word, to: sug.nounWord };
+        } else {
+          msg += ` 마지막 서술어를 '~함 / ~임 / ~음' 형태로 바꿔 주세요.`;
         }
-        if (nonNounEndingCount > 0) {
-          issues.push({
-            type: "warning",
-            header: "문장 종결(마무리) 검토 권장",
-            msg: `맨 마지막 문장이 명사형 어미(~함, ~임)로 완성되지 않았거나 서술형 어미(~다, ~요)로 끝난 것으로 의심됩니다. (입력 내용이 올바르게 끝맺음 되었는지 확인 요망)`
-          });
-        }
+        issue.msg = msg;
+        issues.push(issue);
       }
 
       // 3. Brand / Banned word scan
@@ -2499,13 +2597,8 @@
         const regex = new RegExp(banned, "gi");
         let match;
         while ((match = regex.exec(text)) !== null) {
-          if (banned === "사설") {
-            const before = match.index > 0 ? text[match.index - 1] : " ";
-            const after = match.index + match[0].length < text.length ? text[match.index + match[0].length] : " ";
-            if (/[가-힣]/.test(before) || /[가-힣]/.test(after)) {
-              continue;
-            }
-          }
+          if (match[0].length === 0) { regex.lastIndex++; continue; }
+          if (!isValidBannedMatch(banned, text, match.index, match[0])) continue;
           wordMatches.push({
             word: match[0],
             alt: BANNED_WORDS[banned]
@@ -2564,6 +2657,8 @@
             btnHtml = `<button class="issue-replace-btn" onclick="replaceBannedWord('${issue.replaceAction.target.replace(/'/g, "\\'")}', '${issue.replaceAction.suggested.replace(/'/g, "\\'")}')">대체어로 즉시 자동 치환</button>`;
           } else if (issue.deleteAction) {
             btnHtml = `<button class="issue-replace-btn" style="background-color: #ef4444;" onclick="deleteBannedWord('${issue.deleteAction.target.replace(/'/g, "\\'")}')">해당 표현 삭제</button>`;
+          } else if (issue.endingFix) {
+            btnHtml = `<button class="issue-replace-btn" style="background-color: #10b981;" onclick="applyEndingFix('${issue.endingFix.from.replace(/'/g, "\\'")}', '${issue.endingFix.to.replace(/'/g, "\\'")}')">추천 명사형으로 바꾸기</button>`;
           }
 
           div.innerHTML = `
@@ -2592,6 +2687,31 @@
         editor.value = editor.value.replace(regex, replacement);
         saveCurrentText();
         // Update checkmark
+        const studentSelect = document.getElementById("select-student");
+        const selectedOption = studentSelect.options[studentSelect.selectedIndex];
+        if (selectedOption && studentSelect.value) {
+          const baseText = selectedOption.textContent.replace(' 📝', '');
+          selectedOption.textContent = baseText + (editor.value.trim() ? ' 📝' : '');
+        }
+        triggerAnalysis();
+      }
+    };
+
+    // 마지막 문장의 끝 단어를 추천 명사형 어미로 바꾼다.
+    window.applyEndingFix = function(from, to) {
+      const fix = s => {
+        const i = s.lastIndexOf(from);
+        return i === -1 ? s : s.slice(0, i) + to + s.slice(i + from.length);
+      };
+      const activeModal = document.getElementById("modal-overlay").classList.contains("active");
+      if (activeModal) {
+        const modalEditor = document.getElementById("modal-textarea");
+        modalEditor.value = fix(modalEditor.value);
+        triggerModalAnalysis();
+      } else {
+        const editor = document.getElementById("editor");
+        editor.value = fix(editor.value);
+        saveCurrentText();
         const studentSelect = document.getElementById("select-student");
         const selectedOption = studentSelect.options[studentSelect.selectedIndex];
         if (selectedOption && studentSelect.value) {
@@ -3937,22 +4057,7 @@
           isWarning = true;
         }
 
-        let nonNoun = false;
-        if (text.length > 0) {
-          let cleanText = text.replace(/["“”'‘][^"“”'’]*["“”'’]/g, '').replace(/\([^)]*\)/g, '').replace(/<[^>]*>/g, '').replace(/\[[^\]]*\]/g, '').replace(/【[^】]*】/g, '');
-          if (cleanText.trim().endsWith('.')) {
-            nonNoun = false;
-          } else {
-            const sentences = cleanText.split(/[.\n]/).map(s => s.trim()).filter(s => s.length > 0);
-            if (sentences.length > 0) {
-              const lastSentence = sentences[sentences.length - 1];
-              const lastChar = lastSentence.slice(-1);
-              if (/[다요오죠체서라]$/.test(lastSentence) || !/[함임음됨ㅁㄴ기]$/.test(lastChar)) {
-                nonNoun = true;
-              }
-            }
-          }
-        }
+        const nonNoun = isNonNounEnding(text);
         if (nonNoun) {
           isWarning = true;
           issuesText.push("종결어미");
@@ -3960,11 +4065,7 @@
 
         let bannedMatched = false;
         Object.keys(BANNED_WORDS).forEach(banned => {
-          if (text.includes(banned)) {
-            if (banned === "사설") {
-              const regex = /(?:^|[^가-힣])사설(?:[^가-힣]|$)/;
-              if (!regex.test(text)) return;
-            }
+          if (hasValidBanned(banned, text)) {
             bannedMatched = true;
             const parts = BANNED_WORDS[banned].split("|");
             const cleanAlt = parts[0];
@@ -5024,22 +5125,7 @@
           isWarning = true;
         }
 
-        let nonNoun = false;
-        if (text.length > 0) {
-          let cleanText = text.replace(/["“”'‘][^"“”'’]*["“”'’]/g, '').replace(/\([^)]*\)/g, '').replace(/<[^>]*>/g, '').replace(/\[[^\]]*\]/g, '').replace(/【[^】]*】/g, '');
-          if (cleanText.trim().endsWith('.')) {
-            nonNoun = false;
-          } else {
-            const sentences = cleanText.split(/[.\n]/).map(s => s.trim()).filter(s => s.length > 0);
-            if (sentences.length > 0) {
-              const lastSentence = sentences[sentences.length - 1];
-              const lastChar = lastSentence.slice(-1);
-              if (/[다요오죠체서라]$/.test(lastSentence) || !/[함임음됨ㅁㄴ기]$/.test(lastChar)) {
-                nonNoun = true;
-              }
-            }
-          }
-        }
+        const nonNoun = isNonNounEnding(text);
         if (nonNoun) {
           isWarning = true;
           issuesText.push("종결어미");
@@ -5047,11 +5133,7 @@
 
         let bannedMatched = false;
         Object.keys(BANNED_WORDS).forEach(banned => {
-          if (text.includes(banned)) {
-            if (banned === "사설") {
-              const regex = /(?:^|[^가-힣])사설(?:[^가-힣]|$)/;
-              if (!regex.test(text)) return;
-            }
+          if (hasValidBanned(banned, text)) {
             bannedMatched = true;
             const parts = BANNED_WORDS[banned].split("|");
             const cleanAlt = parts[0];
