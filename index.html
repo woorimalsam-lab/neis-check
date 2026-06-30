@@ -1446,22 +1446,9 @@
         <div class="card">
           <h3 class="card-title">⚙️ 업로드 및 양식 (교과교사용)</h3>
           
-          <label style="font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 700;">1. 학년 및 과목 선택</label>
-          <div style="display: flex; gap: 8px; margin-bottom: 24px;">
-            <select id="excel-subject-grade-select" class="info-input" style="flex: 1; height: 38px; background-color: #0b0f19;">
-              <option value="">학년 선택</option>
-              <option value="1">1학년</option>
-              <option value="2">2학년</option>
-              <option value="3">3학년</option>
-            </select>
-            <select id="excel-subject-select" class="info-input" style="flex: 2; height: 38px; background-color: #0b0f19;">
-              <option value="">학년을 먼저 선택하세요</option>
-            </select>
-          </div>
-
           <button id="excel-subject-template-btn" class="lib-btn" style="width: 100%; margin-bottom: 24px; padding: 10px;">📋 템플릿 파일 다운로드</button>
 
-          <label style="font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 700;">2. 엑셀 파일 올리기</label>
+          <label style="font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 6px; font-weight: 700;">엑셀 파일 올리기</label>
           <div id="excel-subject-dropzone" class="dropzone">
             <span style="font-size: 32px;">📤</span>
             <div class="dropzone-text">여기에 파일을 끌어다 놓거나 클릭하여 선택하세요</div>
@@ -3517,13 +3504,6 @@
     }
 
     function downloadExcelSubjectTemplate() {
-      const gradeKey = document.getElementById("excel-subject-grade-select").value;
-      const subjectKey = document.getElementById("excel-subject-select").value;
-      if (!gradeKey || !subjectKey) {
-        alert("학년과 과목을 모두 선택해주세요.");
-        return;
-      }
-      
       if (typeof TEMPLATE_SUBJECT_B64 !== "undefined") {
         async function buildSubjectTemplate() {
            try {
@@ -3566,8 +3546,8 @@
              const sheetDoc = parser.parseFromString(sheetXmlStr, "text/xml");
              const sheetData = sheetDoc.getElementsByTagName("sheetData")[0];
              
-             const roster = (typeof SUBJECT_ROSTERS !== 'undefined' && SUBJECT_ROSTERS[gradeKey] && SUBJECT_ROSTERS[gradeKey][subjectKey]) ? SUBJECT_ROSTERS[gradeKey][subjectKey] : [];
-             
+             const roster = []; // 학년·과목 선택 없이 빈 명렬표 템플릿 제공
+
              function getOrCreateRow(rIdx) {
                let rows = sheetData.getElementsByTagName("row");
                for(let i=0; i<rows.length; i++) {
@@ -3645,7 +3625,7 @@
              const url = URL.createObjectURL(content);
              const a = document.createElement("a");
              a.href = url;
-             a.download = `2026_나이스_바이트_계산기(교과세특)_${gradeKey}학년_${subjectKey}.xlsm`;
+             a.download = `2026_나이스_바이트_계산기(교과세특).xlsm`;
              a.click();
              URL.revokeObjectURL(url);
              
@@ -4926,9 +4906,7 @@
       const tbody = document.getElementById("excel-subject-grid-tbody");
       tbody.innerHTML = "";
 
-      const gradeKey = document.getElementById("excel-subject-grade-select").value;
-      const subjectKey = document.getElementById("excel-subject-select").value;
-      const roster = (typeof SUBJECT_ROSTERS !== 'undefined' && SUBJECT_ROSTERS[gradeKey] && SUBJECT_ROSTERS[gradeKey][subjectKey]) ? SUBJECT_ROSTERS[gradeKey][subjectKey] : [];
+      const roster = []; // 학년·과목 선택을 사용하지 않음 (업로드한 파일 내용 기준으로 점검)
 
       excelData.forEach((row, idx) => {
         const text = row.content;
