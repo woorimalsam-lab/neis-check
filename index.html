@@ -994,6 +994,14 @@
     .status-badge.warning { background-color: var(--warning-bg); color: #fbbf24; }
     .status-badge.danger { background-color: var(--danger-bg); color: #f87171; }
 
+    /* 점검 대상(금지어/대체어) 하이라이트 */
+    mark.hl-banned { background-color: rgba(239, 68, 68, 0.32); color: #fecaca; border-radius: 3px; padding: 0 2px; font-weight: 700; }
+    mark.hl-replace { background-color: rgba(251, 191, 36, 0.30); color: #fde68a; border-radius: 3px; padding: 0 2px; font-weight: 700; }
+    .inspect-content { color: var(--text-main); font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border-left: 3px solid var(--border-color); }
+    tr.content-row td { padding-top: 0 !important; }
+    .modal-highlight { background: #0b0f19; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; max-height: 150px; overflow: auto; font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; color: var(--text-main); }
+    .modal-highlight:empty { display: none; }
+
     /* Modal Overlay for details editing */
     .modal-overlay {
       position: fixed;
@@ -1717,7 +1725,11 @@
         <button class="modal-close-btn" id="modal-close-btn">&times;</button>
       </div>
       <div style="display: flex; flex-direction: column; gap: 16px;">
-        <textarea id="modal-textarea" class="main-editor" style="height: 250px; font-size: 14px;"></textarea>
+        <div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 700;">🔍 점검 미리보기 — <span style="color:#f87171;">금지어(삭제)</span> · <span style="color:#fbbf24;">대체 권장</span> 표시</div>
+          <div id="modal-highlight" class="modal-highlight"></div>
+        </div>
+        <textarea id="modal-textarea" class="main-editor" style="height: 200px; font-size: 14px;"></textarea>
         
         <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted);">
           <span id="modal-char-count">글자 수: 0자 (공백 제외)</span>
@@ -2058,6 +2070,7 @@
     let currentCategory = "jaju";
     let excelData = []; // In-memory spreadsheet storage for uploaded file
     let selectedRowIdx = null; // Currently editing student index inside Modal
+    let currentInspectorMode = "class"; // 수정 모달 컨텍스트: "class"(담임) | "subject"(교과)
 
     /* ── 학생 명단 업로드/복원 ──────────────────────────────────────────────
        개인정보 보호를 위해 명단은 코드에 포함하지 않습니다.
@@ -2398,6 +2411,49 @@
       analyzeIssues(text, byteCount, config, "issue-list", "issue-count");
     }
 
+    function escapeHtmlText(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // 해당 단어가 '기재 불가'(삭제 대상)인지 '대체 권장'(치환 대상)인지 판정
+    function isCriticalBanned(word, cleanAlt) {
+      return cleanAlt === "기재 불가" ||
+        ["대회", "수상", "특허", "논문", "어학연수", "부모", "기재 불가"].some(k => word.includes(k) || cleanAlt.includes(k));
+    }
+
+    // 본문에서 금지어/대체어 위치를 찾아 색상 하이라이트된 HTML을 만든다.
+    function buildHighlightedHTML(text) {
+      if (!text) return "";
+      const ranges = [];
+      Object.keys(BANNED_WORDS).forEach(banned => {
+        const regex = new RegExp(banned, "gi");
+        let m;
+        while ((m = regex.exec(text)) !== null) {
+          if (m[0].length === 0) { regex.lastIndex++; continue; }
+          if (banned === "사설") {
+            const before = m.index > 0 ? text[m.index - 1] : " ";
+            const after = m.index + m[0].length < text.length ? text[m.index + m[0].length] : " ";
+            if (/[가-힣]/.test(before) || /[가-힣]/.test(after)) continue;
+          }
+          const cleanAlt = BANNED_WORDS[banned].split("|")[0];
+          ranges.push({ start: m.index, end: m.index + m[0].length, critical: isCriticalBanned(m[0], cleanAlt) });
+        }
+      });
+      // 겹치는 구간 제거(시작 빠른 것, 동률이면 긴 것 우선)
+      ranges.sort((a, b) => a.start - b.start || b.end - a.end);
+      const merged = [];
+      let lastEnd = -1;
+      for (const r of ranges) { if (r.start >= lastEnd) { merged.push(r); lastEnd = r.end; } }
+      let html = "", pos = 0;
+      for (const r of merged) {
+        html += escapeHtmlText(text.slice(pos, r.start));
+        html += `<mark class="${r.critical ? "hl-banned" : "hl-replace"}">${escapeHtmlText(text.slice(r.start, r.end))}</mark>`;
+        pos = r.end;
+      }
+      html += escapeHtmlText(text.slice(pos));
+      return html.replace(/\n/g, "<br>");
+    }
+
     function analyzeIssues(text, byteCount, config, targetListId, targetCountId) {
       const issueList = document.getElementById(targetListId);
       const issueCountEl = document.getElementById(targetCountId);
@@ -2479,6 +2535,8 @@
             target: match.word,
             suggested: cleanAlt
           };
+        } else {
+          issue.deleteAction = { target: match.word };
         }
         issues.push(issue);
       });
@@ -2504,6 +2562,8 @@
           let btnHtml = "";
           if (issue.replaceAction) {
             btnHtml = `<button class="issue-replace-btn" onclick="replaceBannedWord('${issue.replaceAction.target.replace(/'/g, "\\'")}', '${issue.replaceAction.suggested.replace(/'/g, "\\'")}')">대체어로 즉시 자동 치환</button>`;
+          } else if (issue.deleteAction) {
+            btnHtml = `<button class="issue-replace-btn" style="background-color: #ef4444;" onclick="deleteBannedWord('${issue.deleteAction.target.replace(/'/g, "\\'")}')">해당 표현 삭제</button>`;
           }
 
           div.innerHTML = `
@@ -2532,6 +2592,32 @@
         editor.value = editor.value.replace(regex, replacement);
         saveCurrentText();
         // Update checkmark
+        const studentSelect = document.getElementById("select-student");
+        const selectedOption = studentSelect.options[studentSelect.selectedIndex];
+        if (selectedOption && studentSelect.value) {
+          const baseText = selectedOption.textContent.replace(' 📝', '');
+          selectedOption.textContent = baseText + (editor.value.trim() ? ' 📝' : '');
+        }
+        triggerAnalysis();
+      }
+    };
+
+    // 금지어(기재 불가) 표현을 본문에서 삭제하고 공백을 정리한다.
+    window.deleteBannedWord = function(target) {
+      const tidy = s => s
+        .replace(new RegExp(target, "g"), "")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\s+([.,)\]】])/g, "$1")
+        .replace(/([(\[【])\s+/g, "$1");
+      const activeModal = document.getElementById("modal-overlay").classList.contains("active");
+      if (activeModal) {
+        const modalEditor = document.getElementById("modal-textarea");
+        modalEditor.value = tidy(modalEditor.value);
+        triggerModalAnalysis();
+      } else {
+        const editor = document.getElementById("editor");
+        editor.value = tidy(editor.value);
+        saveCurrentText();
         const studentSelect = document.getElementById("select-student");
         const selectedOption = studentSelect.options[studentSelect.selectedIndex];
         if (selectedOption && studentSelect.value) {
@@ -3947,6 +4033,14 @@
           <td><button class="issue-replace-btn" onclick="openEditModal(${idx})">수정하기</button></td>
         `;
         tbody.appendChild(tr);
+
+        // 점검 대상(금지어/대체어)이 있는 행은 본문을 색상 하이라이트로 함께 표시
+        if (bannedMatched || isWarning || isDanger) {
+          const ctr = document.createElement("tr");
+          ctr.className = "content-row";
+          ctr.innerHTML = `<td colspan="7"><div class="inspect-content">${buildHighlightedHTML(text)}</div></td>`;
+          tbody.appendChild(ctr);
+        }
       });
 
       document.getElementById("excel-stat-total").textContent = `${total} 명`;
@@ -3960,6 +4054,7 @@
       const student = excelData[idx];
       document.getElementById("modal-student-name").textContent = `[${student.name}] 기재내용 상세 분석 및 수정`;
       document.getElementById("modal-textarea").value = student.content;
+      currentInspectorMode = document.getElementById("tab-excel-inspector-subject").classList.contains("active") ? "subject" : "class";
       document.getElementById("modal-overlay").classList.add("active");
       triggerModalAnalysis();
     };
@@ -3972,7 +4067,7 @@
     function triggerModalAnalysis() {
       if (selectedRowIdx === null) return;
       const text = document.getElementById("modal-textarea").value;
-      const categoryKey = document.getElementById("excel-category-select").value;
+      const categoryKey = currentInspectorMode === "subject" ? "subject" : document.getElementById("excel-category-select").value;
       const config = LIMITS[categoryKey];
 
       const charCount = countChars(text);
@@ -3982,6 +4077,9 @@
       document.getElementById("modal-char-count").textContent = `글자 수: ${charCount}자 (공백 제외)`;
       document.getElementById("modal-byte-count").textContent = `바이트: ${byteCount} / ${config.maxByte} Bytes`;
 
+      // 점검 대상(금지어/대체어) 색상 하이라이트 미리보기
+      document.getElementById("modal-highlight").innerHTML = buildHighlightedHTML(text);
+
       analyzeIssues(text, byteCount, config, "modal-issues", "issue-count");
     }
 
@@ -3989,8 +4087,10 @@
       if (selectedRowIdx === null) return;
       const updatedText = document.getElementById("modal-textarea").value;
       excelData[selectedRowIdx].content = updatedText;
+      const mode = currentInspectorMode;
       closeModal();
-      runBatchInspection();
+      if (mode === "subject") runSubjectBatchInspection();
+      else runBatchInspection();
     }
 
     function exportInspectionReport() {
@@ -5017,6 +5117,14 @@
           <td><button class="issue-replace-btn" onclick="openEditModal(${idx})">수정하기</button></td>
         `;
         tbody.appendChild(tr);
+
+        // 점검 대상(금지어/대체어)이 있는 행은 본문을 색상 하이라이트로 함께 표시
+        if (bannedMatched || isWarning || isDanger) {
+          const ctr = document.createElement("tr");
+          ctr.className = "content-row";
+          ctr.innerHTML = `<td colspan="7"><div class="inspect-content">${buildHighlightedHTML(text)}</div></td>`;
+          tbody.appendChild(ctr);
+        }
       });
 
       document.getElementById("excel-subject-stat-total").textContent = `${total} 명`;
