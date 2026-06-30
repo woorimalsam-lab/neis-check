@@ -1189,7 +1189,8 @@
     <div class="sidebar-footer">
       <div>Ver 2.7.0 (엑셀업로드)</div>
       <div style="margin-top: 4px;">교사용</div>
-      <div style="margin-top: 8px; color: #64748b; font-size: 10px; font-weight: 600;">made by woorimalsam</div>
+      <div style="margin-top: 8px; color: #64748b; font-size: 10px; font-weight: 600;">made by 김수연</div>
+      <div style="margin-top: 2px; color: #64748b; font-size: 10px; font-weight: 600;">woorimalsam@gmail.com</div>
     </div>
   </div>
 
@@ -2751,6 +2752,39 @@
       return wb;
     }
 
+    // Blob을 '다른 이름으로 저장' 창으로 저장 (File System Access API).
+    // 지원하지 않는 브라우저는 기존 자동 다운로드 방식으로 대체합니다.
+    async function saveBlobAs(blob, filename) {
+      if (window.showSaveFilePicker) {
+        try {
+          const ext = filename.slice(filename.lastIndexOf("."));
+          const accept = ext === ".xlsm"
+            ? { "application/vnd.ms-excel.sheet.macroEnabled.12": [".xlsm"] }
+            : { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] };
+          const handle = await window.showSaveFilePicker({
+            suggestedName: filename,
+            types: [{ description: "Excel 파일", accept }]
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return;
+        } catch (e) {
+          if (e && e.name === "AbortError") return; // 사용자가 저장 취소
+          console.warn("저장 창을 사용할 수 없어 기본 다운로드로 대체합니다:", e);
+          // 아래 폴백으로 진행
+        }
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
     function downloadExcelTemplate() {
       const categoryKey = document.getElementById("excel-category-select").value;
 
@@ -2886,12 +2920,7 @@
              
              // 6. 새로운 엑셀 파일 생성 후 다운로드
              const content = await zip.generateAsync({type:"blob"});
-             const url = URL.createObjectURL(content);
-             const a = document.createElement("a");
-             a.href = url;
-             a.download = `2026_나이스_바이트_계산기(자율)_${gradeSelect}학년_${banSelect}반.xlsm`;
-             a.click();
-             URL.revokeObjectURL(url);
+             await saveBlobAs(content, `2026_나이스_바이트_계산기(자율)_${gradeSelect}학년_${banSelect}반.xlsm`);
              
            } catch(e) {
              console.error("자율 템플릿 생성 실패:", e);
@@ -3035,12 +3064,7 @@
              
              // 6. 새로운 엑셀 파일 생성 후 다운로드
              const content = await zip.generateAsync({type:"blob"});
-             const url = URL.createObjectURL(content);
-             const a = document.createElement("a");
-             a.href = url;
-             a.download = `2026_나이스_바이트_계산기(동아리)_${gradeSelect}학년_${banSelect}반.xlsm`;
-             a.click();
-             URL.revokeObjectURL(url);
+             await saveBlobAs(content, `2026_나이스_바이트_계산기(동아리)_${gradeSelect}학년_${banSelect}반.xlsm`);
              
            } catch(e) {
              console.error("동아리 템플릿 생성 실패:", e);
@@ -3184,12 +3208,7 @@
              
              // 6. 새로운 엑셀 파일 생성 후 다운로드
              const content = await zip.generateAsync({type:"blob"});
-             const url = URL.createObjectURL(content);
-             const a = document.createElement("a");
-             a.href = url;
-             a.download = `2026_나이스_바이트_계산기(진로)_${gradeSelect}학년_${banSelect}반.xlsm`;
-             a.click();
-             URL.revokeObjectURL(url);
+             await saveBlobAs(content, `2026_나이스_바이트_계산기(진로)_${gradeSelect}학년_${banSelect}반.xlsm`);
              
            } catch(e) {
              console.error("진로 템플릿 생성 실패:", e);
@@ -3333,12 +3352,7 @@
              
              // 6. 새로운 엑셀 파일 생성 후 다운로드
              const content = await zip.generateAsync({type:"blob"});
-             const url = URL.createObjectURL(content);
-             const a = document.createElement("a");
-             a.href = url;
-             a.download = `2026_나이스_바이트_계산기(교과세특)_${gradeSelect}학년_${banSelect}반.xlsm`;
-             a.click();
-             URL.revokeObjectURL(url);
+             await saveBlobAs(content, `2026_나이스_바이트_계산기(교과세특)_${gradeSelect}학년_${banSelect}반.xlsm`);
              
            } catch(e) {
              console.error("교과세특 템플릿 생성 실패:", e);
@@ -3482,12 +3496,7 @@
              
              // 6. 새로운 엑셀 파일 생성 후 다운로드
              const content = await zip.generateAsync({type:"blob"});
-             const url = URL.createObjectURL(content);
-             const a = document.createElement("a");
-             a.href = url;
-             a.download = `2026_나이스_바이트_계산기(행발 및 종합의견)_${gradeSelect}학년_${banSelect}반.xlsm`;
-             a.click();
-             URL.revokeObjectURL(url);
+             await saveBlobAs(content, `2026_나이스_바이트_계산기(행발 및 종합의견)_${gradeSelect}학년_${banSelect}반.xlsm`);
              
            } catch(e) {
              console.error("행발 템플릿 생성 실패:", e);
@@ -3651,7 +3660,7 @@
       }
     }
 
-    function downloadClassExcelFromHeader() {
+    async function downloadClassExcelFromHeader() {
       const gradeSelect = document.getElementById("input-grade");
       const banSelect = document.getElementById("input-ban");
       const g = gradeSelect.value;
@@ -3693,8 +3702,9 @@
       }
 
       const wb = generateWorkbookData(categoryKey, g, b);
-
-      XLSX.writeFile(wb, `생기부_입력양식_${categoryText}_${g}학년_${b}반(최대_${config.maxChar}자).xlsx`);
+      const arr = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      await saveBlobAs(blob, `생기부_입력양식_${categoryText}_${g}학년_${b}반(최대_${config.maxChar}자).xlsx`);
     }
 
     function handleExcelFile(file) {
