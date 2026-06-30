@@ -1791,6 +1791,14 @@
       "워드프로세서": "기재 불가|컴퓨터 관련 자격증 명칭 기재 금지입니다.",
       "컴퓨터활용능력": "기재 불가|컴퓨터 관련 자격증 명칭 기재 금지입니다.",
       "정보처리기능사": "기재 불가|일체의 자격증 취득 및 시험 기재 금지입니다.",
+      "자격시험": "기재 불가|자격시험 응시·취득 사실 및 명칭은 기재할 수 없습니다.",
+      "자격취득": "기재 불가|자격증 취득 사실은 기재할 수 없습니다.",
+      "면허증": "기재 불가|면허증 취득 사실 및 명칭은 기재할 수 없습니다.",
+      "운전면허": "기재 불가|운전면허 등 면허 취득 사실은 기재할 수 없습니다.",
+      "기능사": "기재 불가|기능사 등 국가기술자격 취득 사실은 기재할 수 없습니다.",
+      "기술사": "기재 불가|기술사 등 국가기술자격 취득 사실은 기재할 수 없습니다.",
+      "ITQ": "기재 불가|ITQ 등 정보기술 자격증 명칭·취득 사실은 기재할 수 없습니다.",
+      "GTQ": "기재 불가|GTQ 등 자격증 명칭·취득 사실은 기재할 수 없습니다.",
 
       // 3. 교내외 대회 및 수상 실적 관련 (전면 기재 금지)
       "대회": "기재 불가|수상 여부와 관계없이 교내외 모든 '대회' 명칭과 준비 과정, 참가 사실은 기재할 수 없습니다. '교내 탐구 활동', '주제 발표회', '학습 과정' 등으로 우회 기술하세요.",
@@ -2442,6 +2450,37 @@
       return { word: info.lastWord, nounWord, recommended };
     }
 
+    // ── 한 활동(본문) 내 중복·유사 문장 감지 ──────────────────────────────
+    function charBigramSet(s) {
+      const t = s.replace(/\s+/g, "");
+      const set = new Set();
+      for (let i = 0; i < t.length - 1; i++) set.add(t.slice(i, i + 2));
+      return set;
+    }
+    function sentenceSimilarity(a, b) {
+      const A = charBigramSet(a), B = charBigramSet(b);
+      if (!A.size || !B.size) return 0;
+      let inter = 0;
+      A.forEach(g => { if (B.has(g)) inter++; });
+      return inter / (A.size + B.size - inter); // 자카드 유사도
+    }
+    // 한 본문 안에서 서로 중복/유사(기본 50% 이상)한 문장을 찾는다.
+    function findDuplicateSentences(text, threshold = 0.5) {
+      const sentences = text.split(/[.\n]/).map(s => s.trim()).filter(s => s.replace(/\s+/g, "").length >= 10);
+      const result = [];
+      const flagged = new Set();
+      for (let i = 0; i < sentences.length; i++) {
+        for (let j = i + 1; j < sentences.length; j++) {
+          if (flagged.has(j)) continue;
+          if (sentenceSimilarity(sentences[i], sentences[j]) >= threshold) {
+            flagged.add(j);
+            result.push({ first: sentences[i], dup: sentences[j] });
+          }
+        }
+      }
+      return result;
+    }
+
     // 본문에서 금지어/대체어 위치를 찾아 색상 하이라이트된 HTML을 만든다.
     function buildHighlightedHTML(text) {
       if (!text) return "";
@@ -2510,6 +2549,17 @@
         }
         issue.msg = msg;
         issues.push(issue);
+      }
+
+      // 2-2. 한 활동 안에서 중복·유사 문장 점검
+      const dupSentences = findDuplicateSentences(text);
+      if (dupSentences.length > 0) {
+        const sample = dupSentences[0].dup;
+        issues.push({
+          type: "warning",
+          header: "중복 내용 감지",
+          msg: `한 활동 안에서 유사하거나 중복된 문장이 발견되었습니다.<br><span style="font-size:12px; color:#94a3b8; display:block; margin-top:4px;">중복 의심: "${escapeHtmlText(sample.slice(0, 40))}${sample.length > 40 ? "…" : ""}"</span>같은 내용 반복을 줄이고 구체적으로 서술하세요.`
+        });
       }
 
       // 3. Brand / Banned word scan
@@ -3965,6 +4015,11 @@
           issuesText.push("종결어미");
         }
 
+        if (findDuplicateSentences(text).length > 0) {
+          isWarning = true;
+          if (!issuesText.includes("중복내용")) issuesText.push("중복내용");
+        }
+
         let bannedMatched = false;
         Object.keys(BANNED_WORDS).forEach(banned => {
           if (hasValidBanned(banned, text)) {
@@ -5031,6 +5086,11 @@
         if (nonNoun) {
           isWarning = true;
           issuesText.push("종결어미");
+        }
+
+        if (findDuplicateSentences(text).length > 0) {
+          isWarning = true;
+          if (!issuesText.includes("중복내용")) issuesText.push("중복내용");
         }
 
         let bannedMatched = false;
