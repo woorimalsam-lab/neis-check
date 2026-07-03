@@ -2602,17 +2602,24 @@
       return null;
     }
 
-    // 본문의 모든 문장 끝을 명사형 어미로 일괄 교정
+    // 본문의 모든 문장 끝을 명사형 어미로 일괄 교정 (교정한 문장은 마침표로 끝맺음)
     function fixAllEndings(text) {
-      return text.split("\n").map(line =>
-        line.split(".").map(seg => {
-          const m = seg.match(/([가-힣]+)(\s*)$/);
-          if (!m) return seg;
+      return text.split("\n").map(line => {
+        const parts = line.split(".");
+        let lastChanged = false;
+        for (let i = 0; i < parts.length; i++) {
+          const m = parts[i].match(/([가-힣]+)(\s*)$/);
+          if (!m) continue;
           const p = endingProblem(m[1]);
-          if (!p.problem || !p.noun || p.noun === m[1]) return seg;
-          return seg.slice(0, m.index) + p.noun + m[2];
-        }).join(".")
-      ).join("\n");
+          if (!p.problem || !p.noun || p.noun === m[1]) continue;
+          parts[i] = parts[i].slice(0, m.index) + p.noun + m[2];
+          if (i === parts.length - 1) lastChanged = true;
+        }
+        let result = parts.join(".");
+        // 마지막 문장을 명사형으로 교정했는데 마침표로 끝나지 않으면 마침표 추가
+        if (lastChanged && !/\.\s*$/.test(result)) result = result.replace(/\s*$/, ".");
+        return result;
+      }).join("\n");
     }
 
     // ── 한 활동(본문) 내 중복·유사 문장 감지 ──────────────────────────────
