@@ -2527,23 +2527,33 @@
       return /기$/.test(word); // '~하기' 형태 허용
     }
 
-    function lastSentenceInfo(text) {
-      const cleanText = text
+    function cleanForSentences(text) {
+      return text
         .replace(/["“”'‘][^"“”'’]*["“”'’]/g, "")
         .replace(/\([^)]*\)/g, "").replace(/<[^>]*>/g, "")
         .replace(/\[[^\]]*\]/g, "").replace(/【[^】]*】/g, "");
-      const sentences = cleanText.split(/[.\n]/).map(s => s.trim()).filter(s => s.length > 0);
-      if (!sentences.length) return null;
-      const lastSentence = sentences[sentences.length - 1];
-      const m = lastSentence.match(/([가-힣]+)$/);
-      return { lastSentence, lastWord: m ? m[1] : "" };
+    }
+
+    // 서술형(~다)으로 끝나 명사형 어미로 종결되지 않은 '모든 문장'을 찾는다.
+    // ('요' 종결은 필요/중요 등 명사 오탐이 많아 제외)
+    function findNonNounSentences(text) {
+      if (!text || !text.trim()) return [];
+      const sentences = cleanForSentences(text).split(/[.\n]/).map(s => s.trim()).filter(s => s.length > 0);
+      const out = [];
+      sentences.forEach(s => {
+        const m = s.match(/([가-힣]+)$/);
+        if (!m) return;
+        const word = m[1];
+        if (!/다$/.test(word) || endsWithNounForm(word)) return;
+        const noun = toNounForm(word);
+        const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        out.push({ word, noun, recommended: noun ? s.replace(new RegExp(escaped + "$"), noun) + "." : null });
+      });
+      return out;
     }
 
     function isNonNounEnding(text) {
-      if (!text || !text.trim()) return false;
-      const info = lastSentenceInfo(text);
-      if (!info || !info.lastWord) return false;
-      return !endsWithNounForm(info.lastWord);
+      return findNonNounSentences(text).length > 0;
     }
 
     // 끝 단어를 보고 알맞은 명사형 어미로 변환 (긴 패턴 우선)
@@ -2577,15 +2587,19 @@
       return null;
     }
 
-    // 마지막 문장 끝 단어 → { word, nounWord, recommended }
-    function suggestNounEnding(text) {
-      const info = lastSentenceInfo(text);
-      if (!info || !info.lastWord) return null;
-      const nounWord = toNounForm(info.lastWord);
-      if (!nounWord || nounWord === info.lastWord) return null;
-      const escaped = info.lastWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const recommended = info.lastSentence.replace(new RegExp(escaped + "$"), nounWord) + ".";
-      return { word: info.lastWord, nounWord, recommended };
+    // 본문의 모든 서술형 종결(~다) 문장을 명사형 어미로 일괄 교정
+    function fixAllEndings(text) {
+      return text.split("\n").map(line =>
+        line.split(".").map(seg => {
+          const m = seg.match(/([가-힣]+)(\s*)$/);
+          if (!m) return seg;
+          const word = m[1];
+          if (!/다$/.test(word) || endsWithNounForm(word)) return seg;
+          const noun = toNounForm(word);
+          if (!noun || noun === word) return seg;
+          return seg.slice(0, m.index) + noun + m[2];
+        }).join(".")
+      ).join("\n");
     }
 
     // ── 한 활동(본문) 내 중복·유사 문장 감지 ──────────────────────────────
@@ -2666,12 +2680,12 @@
           ranges.push({ start: m.index, end: m.index + m[0].length, cls: isCriticalBanned(m[0], cleanAlt) ? "hl-banned" : "hl-replace" });
         }
       });
-      // 명사형 어미로 끝맺지 않은 마지막 서술어도 점검 대상으로 색상 표시
-      if (isNonNounEnding(text)) {
-        const info = lastSentenceInfo(text);
-        if (info && info.lastWord) {
-          const at = text.lastIndexOf(info.lastWord);
-          if (at !== -1) ranges.push({ start: at, end: at + info.lastWord.length, cls: "hl-ending" });
+      // 명사형 어미로 끝맺지 않은 서술형 종결(~다) 문장 끝을 모두 색상 표시
+      {
+        const endRe = /([가-힣]+다)(?=\s*(?:[.\n]|$))/g;
+        let em;
+        while ((em = endRe.exec(text)) !== null) {
+          if (!endsWithNounForm(em[1])) ranges.push({ start: em.index, end: em.index + em[1].length, cls: "hl-ending" });
         }
       }
       // 맞춤법 오류 의심 표현도 색상 표시
@@ -2708,19 +2722,18 @@
         });
       }
 
-      // 2. 명사형 어미 종결 점검 + 추천
-      if (isNonNounEnding(text)) {
-        const sug = suggestNounEnding(text);
-        let msg = `맨 마지막 문장이 명사형 어미(~함, ~임, ~음)로 끝맺지 않은 것으로 보입니다.`;
-        const issue = { type: "warning", header: "문장 종결(명사형 어미) 검토 권장" };
-        if (sug) {
-          msg += `<br><strong style="color:#34d399;">추천: …${escapeHtmlText(sug.word)} → ${escapeHtmlText(sug.nounWord)}</strong>`;
-          msg += `<br><span style="font-size:12px; color:var(--text-muted); display:block; margin-top:4px;">추천 문장: ${escapeHtmlText(sug.recommended)}</span>`;
-          issue.endingFix = { from: sug.word, to: sug.nounWord };
-        } else {
-          msg += ` 마지막 서술어를 '~함 / ~임 / ~음' 형태로 바꿔 주세요.`;
-        }
-        issue.msg = msg;
+      // 2. 명사형 어미 종결 점검 + 추천 (모든 문장 검사)
+      const nonNounSents = findNonNounSentences(text);
+      if (nonNounSents.length > 0) {
+        const fixable = nonNounSents.filter(x => x.noun);
+        let msg = `명사형 어미(~함 / ~임 / ~음)로 끝맺지 않은 서술형(~다) 문장이 ${nonNounSents.length}개 있습니다.`;
+        nonNounSents.slice(0, 6).forEach(x => {
+          msg += `<br><span style="font-size:12px; color:var(--text-muted); display:block; margin-top:4px;">· …${escapeHtmlText(x.word)}` +
+            (x.noun ? ` → <strong style="color:#34d399;">${escapeHtmlText(x.noun)}</strong>` : ` <span style="color:#fbbf24;">(직접 수정 필요)</span>`) + `</span>`;
+        });
+        if (nonNounSents.length > 6) msg += `<br><span style="font-size:12px; color:var(--text-muted);">외 ${nonNounSents.length - 6}개…</span>`;
+        const issue = { type: "warning", header: `문장 종결(명사형 어미) — ${nonNounSents.length}개 검토`, msg };
+        if (fixable.length > 0) issue.endingFixAll = true;
         issues.push(issue);
       }
 
@@ -2823,8 +2836,8 @@
             btnHtml = `<button class="issue-replace-btn" onclick="replaceBannedWord('${issue.replaceAction.target.replace(/'/g, "\\'")}', '${issue.replaceAction.suggested.replace(/'/g, "\\'")}')">대체어로 즉시 자동 치환</button>`;
           } else if (issue.deleteAction) {
             btnHtml = `<button class="issue-replace-btn" style="background-color: #ef4444;" onclick="deleteBannedWord('${issue.deleteAction.target.replace(/'/g, "\\'")}')">해당 표현 삭제</button>`;
-          } else if (issue.endingFix) {
-            btnHtml = `<button class="issue-replace-btn" style="background-color: #10b981;" onclick="applyEndingFix('${issue.endingFix.from.replace(/'/g, "\\'")}', '${issue.endingFix.to.replace(/'/g, "\\'")}')">추천 명사형으로 바꾸기</button>`;
+          } else if (issue.endingFixAll) {
+            btnHtml = `<button class="issue-replace-btn" style="background-color: #10b981;" onclick="applyEndingFixAll()">명사형 어미로 모두 교정</button>`;
           } else if (issue.spellFix) {
             btnHtml = `<button class="issue-replace-btn" style="background-color: #8b5cf6;" onclick="replaceBannedWord('${issue.spellFix.target.replace(/'/g, "\\'")}', '${issue.spellFix.suggested.replace(/'/g, "\\'")}')">맞춤법 교정: ${escapeHtmlText(issue.spellFix.target)} → ${escapeHtmlText(issue.spellFix.suggested)}</button>`;
           }
@@ -2858,20 +2871,16 @@
       }
     };
 
-    // 마지막 문장의 끝 단어를 추천 명사형 어미로 바꾼다.
-    window.applyEndingFix = function(from, to) {
-      const fix = s => {
-        const i = s.lastIndexOf(from);
-        return i === -1 ? s : s.slice(0, i) + to + s.slice(i + from.length);
-      };
+    // 본문의 모든 서술형(~다) 문장을 명사형 어미로 일괄 교정한다.
+    window.applyEndingFixAll = function() {
       const activeModal = document.getElementById("modal-overlay").classList.contains("active");
       if (activeModal) {
         const modalEditor = document.getElementById("modal-textarea");
-        modalEditor.value = fix(modalEditor.value);
+        modalEditor.value = fixAllEndings(modalEditor.value);
         triggerModalAnalysis();
       } else {
         const editor = document.getElementById("editor");
-        editor.value = fix(editor.value);
+        editor.value = fixAllEndings(editor.value);
         saveCurrentText();
         triggerAnalysis();
       }
