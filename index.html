@@ -2748,6 +2748,15 @@
         });
       });
 
+      // 2-4. 가운데 점(·) 등 특수문자 사용 점검
+      if (/[·・•‧∙⋅]/.test(text)) {
+        issues.push({
+          type: "warning",
+          header: "특수문자(가운데 점) 사용",
+          msg: `가운데 점(·) 등 특수문자는 나이스 입력 시 오류나 글자 깨짐이 발생할 수 있어 지양이 권장됩니다. 쉼표(,)나 띄어쓰기로 바꿔 주세요.`
+        });
+      }
+
       // 3. Brand / Banned word scan
       let wordMatches = [];
       Object.keys(BANNED_WORDS).forEach(banned => {
@@ -4213,6 +4222,11 @@
           if (!issuesText.includes("맞춤법")) issuesText.push("맞춤법");
         }
 
+        if (/[·・•‧∙⋅]/.test(text)) {
+          isWarning = true;
+          if (!issuesText.includes("특수문자")) issuesText.push("특수문자");
+        }
+
         let bannedMatched = false;
         Object.keys(BANNED_WORDS).forEach(banned => {
           if (hasValidBanned(banned, text)) {
@@ -5289,6 +5303,11 @@
         if (findSpellingMatches(text).length > 0) {
           isWarning = true;
           if (!issuesText.includes("맞춤법")) issuesText.push("맞춤법");
+        }
+
+        if (/[·・•‧∙⋅]/.test(text)) {
+          isWarning = true;
+          if (!issuesText.includes("특수문자")) issuesText.push("특수문자");
         }
 
         let bannedMatched = false;
