@@ -1514,6 +1514,7 @@
               <option value="">학교급을 먼저 선택하세요</option>
             </select>
           </div>
+          <button id="std-template-btn" class="lib-btn" title="모든 과목이 들어간 JSON 양식을 내려받아 성취기준만 채운 뒤 다시 업로드하세요." style="height: 38px; padding: 0 14px; font-size: 12px; background-color: #10b981; border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">📋 양식 내려받기</button>
           <button id="std-upload-btn" class="lib-btn" title="이 파일(achievement_standards.js)과 같은 구조의 JSON을 업로드하면 성취기준이 채워집니다." style="height: 38px; padding: 0 14px; font-size: 12px; background-color: #6366f1; border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">📤 성취기준 불러오기</button>
           <input type="file" id="std-upload-input" accept=".json,.js,application/json" style="display: none;">
         </div>
@@ -2416,6 +2417,17 @@
       });
       catSel.addEventListener("change", fillSubjects);
       subjSel.addEventListener("change", showStandards);
+
+      // 모든 과목이 들어간 JSON 양식 내려받기 (성취기준만 채워 다시 업로드)
+      const templateBtn = document.getElementById("std-template-btn");
+      if (templateBtn) templateBtn.addEventListener("click", () => {
+        const blob = new Blob([JSON.stringify(ACHIEVEMENT_STANDARDS, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "2022개정_성취기준_양식.json";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      });
 
       uploadBtn.addEventListener("click", () => uploadInput.click());
       uploadInput.addEventListener("change", () => {
