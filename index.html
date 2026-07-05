@@ -1232,6 +1232,7 @@
   <script src="template_subject.js"></script>
   <script src="template_comprehensive.js"></script>
   <script src="subject_rosters.js"></script>
+  <script src="achievement_standards.js"></script>
 </head>
 <body>
   <!-- 테마 무플래시 초기화 (기본 다크) -->
@@ -1489,6 +1490,39 @@
 
     <!-- Tab 2-1: 엑셀 일괄 점검 (교과교사) -->
     <div id="tab-excel-inspector-subject" class="tab-content">
+      <!-- 2022 개정 교육과정 성취기준 확인 -->
+      <div class="card" style="margin-bottom: 24px;">
+        <h3 class="card-title">📚 2022 개정 교육과정 성취기준 확인</h3>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-bottom: 14px;">
+          <div class="info-input-group" style="min-width: 120px;">
+            <label for="std-school" style="font-size: 12px; color: var(--text-muted); font-weight: 700;">학교급</label>
+            <select id="std-school" class="info-input" style="height: 38px; background-color: var(--bg-input);">
+              <option value="">선택</option>
+              <option value="중학교">중학교</option>
+              <option value="고등학교">고등학교</option>
+            </select>
+          </div>
+          <div class="info-input-group" id="std-category-group" style="min-width: 140px; display: none;">
+            <label for="std-category" style="font-size: 12px; color: var(--text-muted); font-weight: 700;">구분(고등)</label>
+            <select id="std-category" class="info-input" style="height: 38px; background-color: var(--bg-input);">
+              <option value="">선택</option>
+            </select>
+          </div>
+          <div class="info-input-group" style="min-width: 180px; flex: 1;">
+            <label for="std-subject" style="font-size: 12px; color: var(--text-muted); font-weight: 700;">과목</label>
+            <select id="std-subject" class="info-input" style="height: 38px; width: 100%; background-color: var(--bg-input);">
+              <option value="">학교급을 먼저 선택하세요</option>
+            </select>
+          </div>
+          <button id="std-upload-btn" class="lib-btn" title="이 파일(achievement_standards.js)과 같은 구조의 JSON을 업로드하면 성취기준이 채워집니다." style="height: 38px; padding: 0 14px; font-size: 12px; background-color: #6366f1; border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">📤 성취기준 불러오기</button>
+          <input type="file" id="std-upload-input" accept=".json,.js,application/json" style="display: none;">
+        </div>
+        <div id="std-result" style="border: 1px solid var(--border); border-radius: 8px; padding: 14px; min-height: 80px; max-height: 340px; overflow-y: auto; background: var(--bg-input); font-size: 13px; line-height: 1.6; color: var(--text-main);">
+          <span style="color: var(--text-muted);">학교급 → (고등은) 구분 → 과목을 선택하면 성취기준이 표시됩니다.</span>
+        </div>
+        <div style="font-size: 11px; color: var(--text-faint); margin-top: 8px;">※ 성취기준 원문은 참고용이며, 정확한 전체 데이터는 <b>[성취기준 불러오기]</b>로 업로드해 채울 수 있습니다.</div>
+      </div>
+
       <div class="dashboard-grid">
         <!-- Control Card -->
         <div class="card">
@@ -2322,8 +2356,89 @@
       initLibrary();
       initDictionary();
       initExcelInspector();
+      initAchievementStandards();
       loadStudentInfo();
     });
+
+    // ── 2022 개정 교육과정 성취기준 확인 (교과교사 탭) ──────────────────────
+    function initAchievementStandards() {
+      const schoolSel = document.getElementById("std-school");
+      const catGroup = document.getElementById("std-category-group");
+      const catSel = document.getElementById("std-category");
+      const subjSel = document.getElementById("std-subject");
+      const result = document.getElementById("std-result");
+      const uploadBtn = document.getElementById("std-upload-btn");
+      const uploadInput = document.getElementById("std-upload-input");
+      if (!schoolSel || typeof ACHIEVEMENT_STANDARDS === "undefined") return;
+
+      // 업로드해 둔 데이터 복원
+      try {
+        const saved = localStorage.getItem("achievement_standards_data");
+        if (saved) { const obj = JSON.parse(saved); Object.keys(obj).forEach(k => { ACHIEVEMENT_STANDARDS[k] = obj[k]; }); }
+      } catch (e) { console.warn("성취기준 복원 실패:", e); }
+
+      function fillCategories() {
+        catSel.innerHTML = '<option value="">선택</option>';
+        Object.keys(ACHIEVEMENT_STANDARDS["고등학교"] || {}).forEach(c => {
+          const o = document.createElement("option"); o.value = c; o.textContent = c; catSel.appendChild(o);
+        });
+      }
+      function fillSubjects() {
+        const school = schoolSel.value;
+        subjSel.innerHTML = '<option value="">과목 선택</option>';
+        result.innerHTML = '<span style="color: var(--text-muted);">과목을 선택하면 성취기준이 표시됩니다.</span>';
+        let subjects = [];
+        if (school === "중학교") subjects = Object.keys(ACHIEVEMENT_STANDARDS["중학교"] || {});
+        else if (school === "고등학교") {
+          if (!catSel.value) { subjSel.innerHTML = '<option value="">구분을 먼저 선택하세요</option>'; return; }
+          subjects = Object.keys((ACHIEVEMENT_STANDARDS["고등학교"] || {})[catSel.value] || {});
+        } else { subjSel.innerHTML = '<option value="">학교급을 먼저 선택하세요</option>'; return; }
+        subjects.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s; subjSel.appendChild(o); });
+      }
+      function showStandards() {
+        const school = schoolSel.value, subject = subjSel.value;
+        if (!school || !subject) return;
+        const list = school === "중학교"
+          ? ((ACHIEVEMENT_STANDARDS["중학교"] || {})[subject] || [])
+          : (((ACHIEVEMENT_STANDARDS["고등학교"] || {})[catSel.value] || {})[subject] || []);
+        if (!list.length) {
+          result.innerHTML = `<span style="color: var(--text-muted);">'${escapeHtmlText(subject)}'의 성취기준 데이터가 아직 없습니다. [성취기준 불러오기]로 업로드해 주세요.</span>`;
+          return;
+        }
+        result.innerHTML = `<div style="font-weight:700; margin-bottom:6px;">${escapeHtmlText(subject)} <span style="color:var(--text-muted); font-weight:400;">(${list.length}개)</span></div>` +
+          list.map(x => `<div style="padding: 6px 0; border-bottom: 1px solid var(--border);"><strong style="color: var(--primary);">${escapeHtmlText(x.code || "")}</strong> ${escapeHtmlText(x.text || "")}</div>`).join("");
+      }
+
+      schoolSel.addEventListener("change", () => {
+        if (schoolSel.value === "고등학교") { catGroup.style.display = ""; fillCategories(); }
+        else catGroup.style.display = "none";
+        fillSubjects();
+      });
+      catSel.addEventListener("change", fillSubjects);
+      subjSel.addEventListener("change", showStandards);
+
+      uploadBtn.addEventListener("click", () => uploadInput.click());
+      uploadInput.addEventListener("change", () => {
+        const file = uploadInput.files && uploadInput.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            let t = String(reader.result).replace(/^﻿/, "").trim();
+            const start = t.indexOf("{"), end = t.lastIndexOf("}");
+            if (start === -1 || end === -1) throw new Error("객체를 찾을 수 없습니다.");
+            const obj = JSON.parse(t.slice(start, end + 1));
+            Object.keys(obj).forEach(k => { ACHIEVEMENT_STANDARDS[k] = obj[k]; });
+            localStorage.setItem("achievement_standards_data", JSON.stringify(ACHIEVEMENT_STANDARDS));
+            alert("성취기준 데이터를 불러왔습니다.");
+            if (schoolSel.value === "고등학교") fillCategories();
+            fillSubjects();
+          } catch (e) { alert("불러오기 실패: JSON 형식을 확인해 주세요.\n" + e.message); }
+        };
+        reader.readAsText(file, "utf-8");
+        uploadInput.value = "";
+      });
+    }
 
     // 학생 선택 없이, 점검 항목(카테고리)별 단일 초안을 이 브라우저에 저장한다.
     function saveCurrentText() {
