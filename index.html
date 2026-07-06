@@ -1235,11 +1235,9 @@
   <script src="achievement_standards.js"></script>
 </head>
 <body>
-  <!-- 테마 무플래시 초기화 (기본 다크) -->
+  <!-- 항상 다크로 시작(기본). 브라이트는 해 아이콘 클릭 시에만 보이며 저장하지 않음. -->
   <script>
-    (function () {
-      try { if ((localStorage.getItem("theme") || "dark") === "light") document.documentElement.classList.add("light"); } catch (e) {}
-    })();
+    (function () { try { localStorage.removeItem("theme"); } catch (e) {} })();
   </script>
 
   <!-- 다크/브라이트 전환 버튼 -->
@@ -2345,7 +2343,6 @@
       btn.addEventListener("click", () => {
         const toLight = !document.documentElement.classList.contains("light");
         document.documentElement.classList.toggle("light", toLight);
-        try { localStorage.setItem("theme", toLight ? "light" : "dark"); } catch (e) {}
         render();
       });
       render();
