@@ -1518,6 +1518,12 @@
               <option value="고등학교">고등학교</option>
             </select>
           </div>
+          <div class="info-input-group" style="min-width: 120px;">
+            <label for="std-group" style="font-size: 12px; color: var(--text-muted); font-weight: 700;">교과</label>
+            <select id="std-group" class="info-input" style="height: 38px; background-color: var(--bg-input);">
+              <option value="">학교급을 먼저 선택하세요</option>
+            </select>
+          </div>
           <div class="info-input-group" id="std-category-group" style="min-width: 140px; display: none;">
             <label for="std-category" style="font-size: 12px; color: var(--text-muted); font-weight: 700;">구분(고등)</label>
             <select id="std-category" class="info-input" style="height: 38px; background-color: var(--bg-input);">
@@ -1527,7 +1533,7 @@
           <div class="info-input-group" style="width: 220px;">
             <label for="std-subject" style="font-size: 12px; color: var(--text-muted); font-weight: 700;">과목</label>
             <select id="std-subject" class="info-input" style="height: 38px; width: 220px; max-width: 100%; background-color: var(--bg-input);">
-              <option value="">학교급을 먼저 선택하세요</option>
+              <option value="">교과를 먼저 선택하세요</option>
             </select>
           </div>
           <button id="std-template-btn" class="lib-btn" title="모든 과목이 들어간 JSON 양식을 내려받아 성취기준만 채운 뒤 다시 업로드하세요." style="height: 38px; padding: 0 14px; font-size: 12px; background-color: #10b981; border: none; border-radius: 8px; color: white; font-weight: 600; cursor: pointer;">📋 양식 내려받기</button>
@@ -1535,9 +1541,9 @@
           <input type="file" id="std-upload-input" accept=".json,.js,application/json" style="display: none;">
         </div>
         <div id="std-result" style="border: 1px solid var(--border); border-radius: 8px; padding: 14px; min-height: 80px; max-height: 340px; overflow-y: auto; background: var(--bg-input); font-size: 13px; line-height: 1.6; color: var(--text-main);">
-          <span style="color: var(--text-muted);">학교급 → (고등은) 구분 → 과목을 선택하면 성취기준이 표시됩니다.</span>
+          <span style="color: var(--text-muted);">학교급 → 교과 → (고등은) 구분 → 과목을 선택하면 성취기준이 표시됩니다.</span>
         </div>
-        <div style="font-size: 11px; color: var(--text-faint); margin-top: 8px;">※ 출처: 2022 개정 교육과정 성취기준·성취수준(학교급·과목별). 각 항목의 <b>‘성취수준 A~E’</b>를 펼치면 수준별 내용을 볼 수 있습니다. (공통 과목은 원자료에 미포함)</div>
+        <div style="font-size: 11px; color: var(--text-faint); margin-top: 8px;">※ 출처: 2022 개정 교육과정 성취기준·성취수준(학교급·과목별), 공통 과목은 교육부 고시 제2022-33호 원문. 각 항목의 <b>‘성취수준 A~E’</b>를 펼치면 수준별 내용을 볼 수 있습니다.</div>
       </div>
 
       <div class="dashboard-grid">
@@ -2748,6 +2754,7 @@
     // ── 2022 개정 교육과정 성취기준 확인 (교과교사 탭) ──────────────────────
     function initAchievementStandards() {
       const schoolSel = document.getElementById("std-school");
+      const groupSel = document.getElementById("std-group");
       const catGroup = document.getElementById("std-category-group");
       const catSel = document.getElementById("std-category");
       const subjSel = document.getElementById("std-subject");
@@ -2762,23 +2769,85 @@
         if (saved) { const obj = JSON.parse(saved); Object.keys(obj).forEach(k => { ACHIEVEMENT_STANDARDS[k] = obj[k]; }); }
       } catch (e) { console.warn("성취기준 복원 실패:", e); }
 
-      function fillCategories() {
+      // 교과(국어·수학 등) 분류 — 2022 개정 교육과정 성취기준 자료의 교과별 구성 기준
+      const STD_GROUP_ORDER = ["국어", "수학", "영어", "사회", "역사", "도덕", "과학", "체육", "음악", "미술", "기술·가정", "정보", "제2외국어", "한문", "교양", "기타"];
+      const STD_HIGH_GROUPS = {
+        "국어": ["공통국어1", "공통국어2", "화법과 언어", "독서와 작문", "문학", "주제 탐구 독서", "문학과 영상", "직무 의사소통", "독서 토론과 글쓰기", "매체 의사소통", "언어생활 탐구"],
+        "수학": ["공통수학1", "공통수학2", "대수", "확률과 통계", "기하", "경제 수학", "인공지능 수학", "직무수학", "수학과 문화", "실용 통계", "수학과제 탐구"],
+        "영어": ["공통영어1", "공통영어2"],
+        "사회": ["통합사회1", "통합사회2", "세계시민과 지리", "사회와 문화", "한국지리 탐구", "도시의 미래 탐구", "정치", "법과 사회", "경제", "국제 관계의 이해", "여행지리", "사회문제 탐구", "금융과 경제생활", "기후변화와 지속가능한 세계"],
+        "역사": ["한국사1", "한국사2", "세계사", "동아시아 역사 기행", "역사로 탐구하는 현대 세계"],
+        "도덕": ["현대사회와 윤리", "윤리와 사상", "인문학과 윤리", "윤리문제 탐구"],
+        "과학": ["통합과학1", "통합과학2", "과학탐구실험1", "과학탐구실험2", "물리학", "화학", "생명과학", "지구과학", "역학과 에너지", "전자기와 양자", "물질과 에너지", "화학 반응의 세계", "세포와 물질대사", "생물의 유전", "지구시스템과학", "행성우주과학", "과학의 역사와 문화", "기후변화와 환경생태", "융합과학 탐구"],
+        "체육": ["체육1", "체육2", "운동과 건강", "스포츠 문화", "스포츠 과학", "스포츠 생활1", "스포츠 생활2"],
+        "음악": ["음악", "음악 연주와 창작", "음악 감상과 비평", "음악과 미디어"],
+        "미술": ["미술", "미술 창작", "미술 감상과 비평", "미술과 매체"],
+        "기술·가정": ["기술ㆍ가정", "기술·가정", "로봇과 공학세계", "생활과학 탐구", "창의 공학 설계", "지식 재산 일반", "생애 설계와 자립", "아동발달과 부모"],
+        "제2외국어": ["중국어", "심화 중국어", "중국어 회화", "중국 문화", "일본어", "심화 일본어", "일본어 회화", "일본 문화"]
+      };
+      const STD_SUBJECT_GROUP = {};
+      Object.keys(STD_HIGH_GROUPS).forEach(g => STD_HIGH_GROUPS[g].forEach(s => { STD_SUBJECT_GROUP[s] = g; }));
+      // 업로드로 추가된 과목은 과목명 키워드로 분류
+      const STD_GROUP_RULES = [
+        [/한문/, "한문"], [/중국|일본|독일|프랑스|스페인|러시아|아랍|베트남/, "제2외국어"], [/영어/, "영어"],
+        [/수학|대수|미적분|확률|통계|기하/, "수학"], [/국어|화법|독서|작문|문학|매체|언어/, "국어"],
+        [/한국사|역사|세계사/, "역사"], [/윤리|도덕/, "도덕"], [/정보|인공지능|데이터|프로그래밍|소프트웨어/, "정보"],
+        [/과학|물리|화학|생명|생물|지구|우주|에너지|양자|세포/, "과학"], [/사회|지리|정치|법|경제|금융/, "사회"],
+        [/체육|스포츠|운동/, "체육"], [/음악/, "음악"], [/미술/, "미술"], [/기술|가정|공학|지식 재산|생애|아동/, "기술·가정"]
+      ];
+      function stdGroupOf(school, subject) {
+        if (school === "중학교") return subject.replace(/ㆍ/g, "·"); // 중학교는 교과 = 과목
+        if (STD_SUBJECT_GROUP[subject]) return STD_SUBJECT_GROUP[subject];
+        const hit = STD_GROUP_RULES.find(([re]) => re.test(subject));
+        return hit ? hit[1] : "기타";
+      }
+      const sortGroups = groups => groups.sort((a, b) => {
+        const ia = STD_GROUP_ORDER.indexOf(a), ib = STD_GROUP_ORDER.indexOf(b);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+      });
+      const addOption = (sel, value, text) => { const o = document.createElement("option"); o.value = value; o.textContent = text || value; sel.appendChild(o); };
+      const resetResult = msg => { result.innerHTML = `<span style="color: var(--text-muted);">${msg}</span>`; };
+
+      function fillGroups() {
+        const school = schoolSel.value;
+        catGroup.style.display = "none";
         catSel.innerHTML = '<option value="">선택</option>';
-        Object.keys(ACHIEVEMENT_STANDARDS["고등학교"] || {}).forEach(c => {
-          const o = document.createElement("option"); o.value = c; o.textContent = c; catSel.appendChild(o);
-        });
+        subjSel.innerHTML = '<option value="">교과를 먼저 선택하세요</option>';
+        if (!school) {
+          groupSel.innerHTML = '<option value="">학교급을 먼저 선택하세요</option>';
+          subjSel.innerHTML = '<option value="">학교급을 먼저 선택하세요</option>';
+          resetResult("학교급 → 교과 → (고등은) 구분 → 과목을 선택하면 성취기준이 표시됩니다.");
+          return;
+        }
+        const groups = new Set();
+        if (school === "중학교") Object.keys(ACHIEVEMENT_STANDARDS["중학교"] || {}).forEach(s => groups.add(stdGroupOf(school, s)));
+        else Object.values(ACHIEVEMENT_STANDARDS["고등학교"] || {}).forEach(cat => Object.keys(cat || {}).forEach(s => groups.add(stdGroupOf(school, s))));
+        groupSel.innerHTML = '<option value="">교과 선택</option>';
+        sortGroups(Array.from(groups)).forEach(g => addOption(groupSel, g));
+        resetResult("교과를 선택하세요.");
+      }
+      // 고등학교: 선택한 교과의 과목이 있는 구분(공통·일반 선택 등)만 표시
+      function fillCategories() {
+        const group = groupSel.value;
+        catSel.innerHTML = '<option value="">선택</option>';
+        const cats = Object.keys(ACHIEVEMENT_STANDARDS["고등학교"] || {})
+          .filter(c => Object.keys(ACHIEVEMENT_STANDARDS["고등학교"][c] || {}).some(s => stdGroupOf("고등학교", s) === group));
+        cats.forEach(c => addOption(catSel, c));
+        if (cats.length === 1) catSel.value = cats[0];
       }
       function fillSubjects() {
-        const school = schoolSel.value;
+        const school = schoolSel.value, group = groupSel.value;
         subjSel.innerHTML = '<option value="">과목 선택</option>';
-        result.innerHTML = '<span style="color: var(--text-muted);">과목을 선택하면 성취기준이 표시됩니다.</span>';
+        resetResult("과목을 선택하면 성취기준이 표시됩니다.");
+        if (!group) { subjSel.innerHTML = '<option value="">교과를 먼저 선택하세요</option>'; return; }
         let subjects = [];
-        if (school === "중학교") subjects = Object.keys(ACHIEVEMENT_STANDARDS["중학교"] || {});
-        else if (school === "고등학교") {
-          if (!catSel.value) { subjSel.innerHTML = '<option value="">구분을 먼저 선택하세요</option>'; return; }
-          subjects = Object.keys((ACHIEVEMENT_STANDARDS["고등학교"] || {})[catSel.value] || {});
-        } else { subjSel.innerHTML = '<option value="">학교급을 먼저 선택하세요</option>'; return; }
-        subjects.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s; subjSel.appendChild(o); });
+        if (school === "중학교") subjects = Object.keys(ACHIEVEMENT_STANDARDS["중학교"] || {}).filter(s => stdGroupOf(school, s) === group);
+        else {
+          if (!catSel.value) { subjSel.innerHTML = '<option value="">구분을 먼저 선택하세요</option>'; resetResult("구분(공통·일반 선택 등)을 선택하세요."); return; }
+          subjects = Object.keys((ACHIEVEMENT_STANDARDS["고등학교"] || {})[catSel.value] || {}).filter(s => stdGroupOf(school, s) === group);
+        }
+        subjects.forEach(s => addOption(subjSel, s));
+        if (subjects.length === 1) { subjSel.value = subjects[0]; showStandards(); }
       }
       function showStandards() {
         const school = schoolSel.value, subject = subjSel.value;
@@ -2806,8 +2875,9 @@
         result.innerHTML = `<div style="font-weight:700; margin-bottom:6px;">${escapeHtmlText(subject)} <span style="color:var(--text-muted); font-weight:400;">(${list.length}개)</span></div>` + rowsHtml;
       }
 
-      schoolSel.addEventListener("change", () => {
-        if (schoolSel.value === "고등학교") { catGroup.style.display = ""; fillCategories(); }
+      schoolSel.addEventListener("change", fillGroups);
+      groupSel.addEventListener("change", () => {
+        if (schoolSel.value === "고등학교" && groupSel.value) { catGroup.style.display = ""; fillCategories(); }
         else catGroup.style.display = "none";
         fillSubjects();
       });
@@ -2839,8 +2909,7 @@
             Object.keys(obj).forEach(k => { ACHIEVEMENT_STANDARDS[k] = obj[k]; });
             localStorage.setItem("achievement_standards_data", JSON.stringify(ACHIEVEMENT_STANDARDS));
             alert("성취기준 데이터를 불러왔습니다.");
-            if (schoolSel.value === "고등학교") fillCategories();
-            fillSubjects();
+            fillGroups();
           } catch (e) { alert("불러오기 실패: JSON 형식을 확인해 주세요.\n" + e.message); }
         };
         reader.readAsText(file, "utf-8");
