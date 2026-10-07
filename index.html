@@ -3263,14 +3263,28 @@
       "뿐만아니라": ["뿐만 아니라", SPELL_REASONS.sp2],
       "그럼에도불구하고": ["그럼에도 불구하고", SPELL_REASONS.sp2]
     };
+    // 동형어 오탐 방지 게이트 — false를 반환하면 해당 위치는 맞춤법 오류로 보지 않음
+    const SPELL_GATES = {
+      // '일부(一部)+로' : "과정의 일부로", "요소의 일부로서"는 정상 표현
+      "일부로": (prev, next) => !/의\s*$|중\s*$/.test(prev) && !/^[서써]/.test(next),
+      // 고대 가요 '구지가(龜旨歌)'
+      "구지": (prev, next) => !/^가/.test(next),
+      // 의학 용어 '치루(痔漏)' — 동사 활용형(치루고·치루어…)일 때만 오류
+      "치루": (prev, next) => /^[고어었는며면지기던다]/.test(next)
+    };
     function findSpellingMatches(text) {
       const matches = [];
       for (const wrong in SPELLING_RULES) {
         const v = SPELLING_RULES[wrong];
         const right = Array.isArray(v) ? v[0] : v;
         const reason = Array.isArray(v) ? (v[1] || "") : "";
+        const gate = SPELL_GATES[wrong];
         let idx = text.indexOf(wrong);
         while (idx !== -1) {
+          if (gate && !gate(text.slice(Math.max(0, idx - 4), idx), text.slice(idx + wrong.length))) {
+            idx = text.indexOf(wrong, idx + wrong.length);
+            continue;
+          }
           matches.push({ wrong, right, reason, start: idx, end: idx + wrong.length });
           idx = text.indexOf(wrong, idx + wrong.length);
         }
@@ -3468,17 +3482,37 @@
       return issues;
     }
 
+    // 문맥 검증을 통과한 위치만 치환한다(예: '아마존 열대우림'의 지명, '과정의 일부로'는 그대로 둠).
+    function replaceValidOccurrences(text, target, replacement) {
+      const spellGate = Object.prototype.hasOwnProperty.call(SPELLING_RULES, target) ? (SPELL_GATES[target] || null) : undefined;
+      const bannedKeys = spellGate === undefined
+        ? Object.keys(BANNED_WORDS).filter(k => { try { return new RegExp("^(?:" + k + ")$", "i").test(target); } catch (e) { return false; } })
+        : [];
+      const positions = [];
+      let idx = text.indexOf(target);
+      while (idx !== -1) {
+        let ok = true;
+        if (spellGate) ok = spellGate(text.slice(Math.max(0, idx - 4), idx), text.slice(idx + target.length));
+        else if (bannedKeys.length) ok = bannedKeys.some(k => isValidBannedMatch(k, text, idx, target));
+        if (ok) positions.push(idx);
+        idx = text.indexOf(target, idx + target.length);
+      }
+      let out = text;
+      for (let i = positions.length - 1; i >= 0; i--) {
+        out = out.slice(0, positions[i]) + replacement + out.slice(positions[i] + target.length);
+      }
+      return out;
+    }
+
     window.replaceBannedWord = function(target, replacement) {
       const activeModal = document.getElementById("modal-overlay").classList.contains("active");
       if (activeModal) {
         const modalEditor = document.getElementById("modal-textarea");
-        const regex = new RegExp(target, "g");
-        modalEditor.value = modalEditor.value.replace(regex, replacement);
+        modalEditor.value = replaceValidOccurrences(modalEditor.value, target, replacement);
         triggerModalAnalysis();
       } else {
         const editor = document.getElementById("editor");
-        const regex = new RegExp(target, "g");
-        editor.value = editor.value.replace(regex, replacement);
+        editor.value = replaceValidOccurrences(editor.value, target, replacement);
         saveCurrentText();
         triggerAnalysis();
       }
@@ -3501,8 +3535,7 @@
 
     // 금지어(기재 불가) 표현을 본문에서 삭제하고 공백을 정리한다.
     window.deleteBannedWord = function(target) {
-      const tidy = s => s
-        .replace(new RegExp(target, "g"), "")
+      const tidy = s => replaceValidOccurrences(s, target, "")
         .replace(/[ \t]{2,}/g, " ")
         .replace(/\s+([.,)\]】])/g, "$1")
         .replace(/([(\[【])\s+/g, "$1");
