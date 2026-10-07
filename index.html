@@ -793,6 +793,12 @@
       border: 1px solid rgba(16,185,129,0.3);
     }
 
+    .lib-badge-doc {
+      background: rgba(37,99,235,0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(37,99,235,0.35);
+    }
+
     .lib-badge-drive {
       background: rgba(234,179,8,0.15);
       color: #facc15;
@@ -1803,6 +1809,7 @@
       <!-- Category Filter -->
       <div class="lib-filter-bar">
         <button class="lib-filter-btn active" data-cat="all">전체</button>
+        <button class="lib-filter-btn" data-cat="file">자료 파일</button>
         <button class="lib-filter-btn" data-cat="web">외부 링크</button>
       </div>
 
@@ -2529,6 +2536,16 @@
     ];
 
     const LIBRARY_FILES = [
+      // ── 📄 자료 파일 (이 사이트에서 바로 내려받기) ────────────────────────
+      {
+        cat: "file",
+        title: "학생부종합전형 대비 학교생활기록부 영역별 핵심·주의사항 (2026, 교사용)",
+        size: "23KB",
+        type: "DOCX",
+        desc: "서울대 아로리·서울시립대·동국대 가이드북과 5개 대학 공동연구의 평가 관점, 2026 기재요령 유의사항을 영역별(교과·세특·자율·동아리·진로·행특)로 정리한 Word 자료",
+        file: "library/2026_hakjong_record_guide.docx",
+        downloadName: "2026_학생부종합전형_대비_학생부_영역별_핵심·주의사항.docx"
+      },
       // ── 🌐 외부 링크 (공식 공개 자료) ─────────────────────────────────
       {
         cat: "web",
@@ -5995,6 +6012,7 @@
         if (file.type === "PDF") { typeBadgeClass = "lib-badge-pdf"; typeIcon = "📕"; }
         if (file.type === "HWP" || file.type === "HWPX") { typeBadgeClass = "lib-badge-hwp"; typeIcon = "📘"; }
         if (file.type === "WEB") { typeBadgeClass = "lib-badge-web"; typeIcon = "🌐"; }
+        if (file.type === "DOCX") { typeBadgeClass = "lib-badge-doc"; typeIcon = "📝"; }
 
         // Drive folder badge
         const driveBadge = file.driveFolder ? `<span class="lib-badge lib-badge-drive">📁 드라이브</span>` : "";
@@ -6006,6 +6024,9 @@
           const dlUrl   = `https://drive.google.com/uc?export=download&id=${file.id}`;
           actionHtml += `<a href="${viewUrl}" target="_blank" class="lib-row-btn lib-row-btn-view">👁️ 보기</a>
                          <a href="${dlUrl}" target="_blank" class="lib-row-btn lib-row-btn-dl">📥 다운로드</a>`;
+        }
+        if (file.file) {
+          actionHtml += `<a href="${file.file}" download="${file.downloadName || ""}" class="lib-row-btn lib-row-btn-dl">📥 다운로드</a>`;
         }
         if (file.url) {
           const btnText = file.isLink ? "🔗 바로가기" : "📁 드라이브";
